@@ -1,4 +1,4 @@
-# This file contains the code to preprocess the sentences before clustering.
+# This file contains the code to classify sentences into intents.
 
 from get_data import get_sentences
 from preprocess import preprocess_sentences
@@ -51,7 +51,7 @@ def classify_sentences(sentences, granularity=granularity):
         for ii in range(show_some):
             print(representatives[ii])
 
-    # # Group sentences by cluster
+    # Group sentences by cluster
     clusters = {label: [] for label in set(cluster_labels)}
     for i, label in enumerate(cluster_labels):
         # print(f"i: {i}; label: {label}; sentence: {sentences[i].strip()}")
