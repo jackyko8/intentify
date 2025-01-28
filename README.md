@@ -33,6 +33,11 @@ A live demo is available at: [https://intentify.onmy.ai](https://intentify.onmy.
 3. Controls:
    - Move the Granularity Setting slide bar to get more or less intents
 
+---
+
+## Design
+
+![Intentify Dashboard](./docs/Intentify.png)
 
 ---
 
