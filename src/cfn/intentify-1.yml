@@ -1,0 +1,278 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: "CloudFormation Template for Streamlit App with CloudFront, ACM, and Route53"
+
+Parameters:
+
+  DomainName:
+    Description: "The custom domain name (e.g., app.example.com)"
+    Type: String
+    Default: intentify-1.dev.onmyapp.ai
+    # Default: intentify.onmy.ai
+
+  ACMCertificateArn:
+    Description: "The ACM Certificate for the custom domain name"
+    Type: String
+    Default: arn:aws:acm:us-east-1:309062441977:certificate/2e823827-fc5f-4c09-9e40-4f9d08bd37b9 # intentify-1.dev.onmyapp.ai
+    # Default: arn:aws:acm:us-east-1:309062441977:certificate/20f3bb57-600a-41f7-a126-ab8a5ca1d7f3 # onmyapp.ai
+    # Default: arn:aws:acm:us-east-1:309062441977:certificate/038d6eab-4f29-4f69-86f5-7c67d0c1b2d4 # onmy.ai
+
+  KeyName:
+    Description: "Name of an existing EC2 KeyPair to enable SSH access"
+    Type: String
+    Default: onmyai-key
+
+  VPCId:
+    Description: "VPC ID"
+    Type: AWS::EC2::VPC::Id
+    Default: vpc-0f416692254a5988e
+
+  SubnetId:
+    Description: "Subnet ID"
+    Type: AWS::EC2::Subnet::Id
+    Default: subnet-013f344a410f35e58
+
+  AppPort:
+    Description: "Port number for the application"
+    Type: Number
+    Default: 8501
+
+  S3BucketName:
+    Description: "The name of the S3 bucket containing the application ZIP file"
+    Type: String
+    Default: intentify-deployment-309062441977
+
+  S3Key:
+    Description: "The key (path) of the ZIP file in the S3 bucket"
+    Type: String
+    Default: src/streamlit/app.zip
+
+  S3DataFiles:
+    Description: "The prefix for test data files in the S3 bucket"
+    Type: String
+    Default: data/*
+
+  TimeZone:
+    Description: "Time zone for the EC2 instance"
+    Type: String
+    Default: "Australia/Sydney"
+
+  # HostedZoneId:
+  #   Description: "Route53 Hosted Zone ID for the domain"
+  #   Type: String
+  #   Default: Z10055821EBKI19XEWLSO  # onmyapp.ai
+
+Resources:
+
+  # S3 Access Role
+  S3AccessRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: S3AccessPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                Resource:
+                  - !Sub "arn:aws:s3:::${S3BucketName}/${S3Key}"
+                  - !Sub "arn:aws:s3:::${S3BucketName}/${S3DataFiles}"
+
+  # Instance Profile for the Role
+  S3AccessInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref S3AccessRole
+
+  # Security Group
+  StreamlitSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: "Allow HTTP and SSH"
+      VpcId: !Ref VPCId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: !Ref AppPort
+          ToPort: !Ref AppPort
+          CidrIp: 0.0.0.0/0
+
+  # EC2 Instance
+  StreamlitEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t3a.large
+      KeyName: !Ref KeyName
+      ImageId: ami-00c84bec55efa16ab # Amazon Linux 2023 AMI (adjust for your region)
+      IamInstanceProfile: !Ref S3AccessInstanceProfile
+      VpcId: !Ref VPCId
+      NetworkInterfaces:
+        - AssociatePublicIpAddress: true
+          DeviceIndex: 0
+          SubnetId: !Ref SubnetId
+          GroupSet:
+            - !Ref StreamlitSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: 30
+      Tags:
+        - Key: Name
+          Value: !Sub "${AWS::StackName}"
+      UserData:
+        # UserData script to set up a generic script that runs every time the instance starts
+        # First install python3 and pip3
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e  # Exit on any error
+          (
+            # Initialisation
+            date
+            yum update -y
+            yum install -y unzip aws-cli
+            yum install python3 -y
+            yum install python3-pip -y
+            timedatectl set-timezone ${TimeZone}
+
+            # Prepare the running environment
+            mkdir -p /home/ec2-user/streamlit-app
+            echo S3BucketName=${S3BucketName} > /home/ec2-user/streamlit-app/app.conf
+            echo S3Key=${S3Key} >> /home/ec2-user/streamlit-app/app.conf
+            echo AppPort=${AppPort} >> /home/ec2-user/streamlit-app/app.conf
+            chown -R ec2-user:ec2-user /home/ec2-user/streamlit-app
+
+            # Download and unpack the application ZIP file
+            aws s3 cp s3://${S3BucketName}/${S3Key} /home/ec2-user/streamlit-app/app.zip
+            test -d /opt/streamlit-app && rm -fr /opt/streamlit-app
+            mkdir -p /opt/streamlit-app
+            unzip /home/ec2-user/streamlit-app/app.zip -d /opt/streamlit-app
+            chmod +x /opt/streamlit-app/streamlit_app.sh
+            chown -R ec2-user:ec2-user /opt/streamlit-app
+
+            # Create the Streamlit config file
+            mkdir -p /home/ec2-user/.streamlit
+            cat << EOF > /home/ec2-user/.streamlit/config.toml
+          [server]
+          enableCORS = false
+          enableWebsocketCompression = true
+          allowRunOnSave = true
+          port = 8501
+          headless = true
+          EOF
+            chown -R ec2-user:ec2-user /home/ec2-user/.streamlit
+
+            # Create the log file
+            touch /var/log/streamlit-app.log
+            chown ec2-user:ec2-user /var/log/streamlit-app.log
+
+            # Create a systemd service to run the application
+            cat << EOF > /etc/systemd/system/streamlit-app.service
+          [Unit]
+          Description=Run the application continuously
+          After=network.target
+
+          [Service]
+          ExecStart=/opt/streamlit-app/streamlit_app.sh
+          Type=simple
+          Restart=always
+          RestartSec=5
+          User=ec2-user
+          WorkingDirectory=/opt/streamlit-app
+
+          [Install]
+          WantedBy=multi-user.target
+          EOF
+            systemctl daemon-reload
+            systemctl enable streamlit-app
+            systemctl start streamlit-app
+
+            echo "EC2 instance is ready"
+          ) >> /var/log/ec2-userdata.log 2>&1
+
+  # Elastic IP for EC2
+  StreamlitEIP:
+    Type: AWS::EC2::EIP
+    Properties:
+      InstanceId: !Ref StreamlitEC2Instance
+
+  # CloudFront Distribution
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Comment: !Ref DomainName
+        HttpVersion: http3  # Support HTTP/3 with fallback to HTTP/2 and HTTP/1.1
+        Origins:
+          # - DomainName: "example.com" # A placeholder when StreamlitEC2Instance is absent
+          - DomainName: !GetAtt StreamlitEC2Instance.PublicDnsName
+            Id: StreamlitOrigin
+            CustomOriginConfig:
+              HTTPPort: !Ref AppPort
+              OriginProtocolPolicy: http-only
+        DefaultCacheBehavior:
+          TargetOriginId: StreamlitOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+          CachedMethods: ["GET", "HEAD"]
+          ForwardedValues:
+            QueryString: true
+        ViewerCertificate:
+          AcmCertificateArn: !Ref ACMCertificateArn
+          SslSupportMethod: sni-only
+        Aliases:
+          - !Ref DomainName
+
+  # ACM Certificate
+  # ACMCertificate:
+  #   Type: AWS::CertificateManager::Certificate
+  #   Properties:
+  #     DomainName: !Ref DomainName
+  #     ValidationMethod: DNS
+
+  # Route 53 Record
+  # Route53Record:
+  #   Type: AWS::Route53::RecordSet
+  #   Properties:
+  #     HostedZoneId: !Ref HostedZoneId
+  #     Name: !Ref DomainName
+  #     Type: A
+  #     AliasTarget:
+  #       DNSName: !GetAtt CloudFrontDistribution.DomainName
+  #       HostedZoneId: Z2FDTNDATAQYW2 # CloudFront Hosted Zone ID
+
+Outputs:
+  StreamlitAppURL:
+    Description: "URL of the Streamlit application"
+    Value: !Join
+    - ""
+    - - "http://"
+      - !GetAtt StreamlitEC2Instance.PublicDnsName
+      - ":"
+      - !Ref AppPort
+
+  CloudFrontURL:
+    Description: "URL of the CloudFront distribution"
+    Value: !Join
+    - ""
+    - -  "https://"
+      -  !GetAtt CloudFrontDistribution.DomainName
+
+  CustomURL:
+    Description: "URL of the Custom Domain"
+    Value: !Join
+    - ""
+    - -  "https://"
+      -  !Ref DomainName
