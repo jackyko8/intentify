@@ -81,6 +81,7 @@ st.write(
     """,
     unsafe_allow_html=True
 )
+st.write("<div style='text-align: center; font-size: 16px;'>You may press R to refresh.</div>", unsafe_allow_html=True)
 
 url = st_javascript("await fetch('').then(r => window.parent.location.href)")
 

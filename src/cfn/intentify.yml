@@ -110,7 +110,7 @@ Resources:
   StreamlitEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t3a.large
+      InstanceType: t3a.small
       KeyName: !Ref KeyName
       ImageId: ami-00c84bec55efa16ab # Amazon Linux 2023 AMI (adjust for your region)
       IamInstanceProfile: !Ref S3AccessInstanceProfile
@@ -163,10 +163,6 @@ Resources:
             cat << EOF > /home/ec2-user/.streamlit/config.toml
           [server]
           enableCORS = false
-          enableWebsocketCompression = true
-          allowRunOnSave = true
-          port = 8501
-          headless = true
           EOF
             chown -R ec2-user:ec2-user /home/ec2-user/.streamlit
 
@@ -210,7 +206,7 @@ Resources:
     Properties:
       DistributionConfig:
         Enabled: true
-        Comment: !Ref DomainName
+        Comment: !Sub "${AWS::StackName}"
         HttpVersion: http3  # Support HTTP/3 with fallback to HTTP/2 and HTTP/1.1
         Origins:
           # - DomainName: "example.com" # A placeholder when StreamlitEC2Instance is absent

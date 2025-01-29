@@ -1,5 +1,8 @@
 # Release Log
 
+- 2025-01-30
+  - Baseline after minor changes
+
 - 2025-01-28
   - Deploy EC2 and CloudFront through CloudFormation
   - Separate settings into common/config.py
