@@ -1,5 +1,8 @@
 # Release Log
 
+- 2025-02-01
+  - Fine tuning and minor fixes
+
 - 2025-01-30
   - Baseline after minor changes
 

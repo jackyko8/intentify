@@ -110,7 +110,7 @@ Resources:
   StreamlitEC2Instance:
     Type: AWS::EC2::Instance
     Properties:
-      InstanceType: t3a.small
+      InstanceType: t3a.micro
       KeyName: !Ref KeyName
       ImageId: ami-00c84bec55efa16ab # Amazon Linux 2023 AMI (adjust for your region)
       IamInstanceProfile: !Ref S3AccessInstanceProfile

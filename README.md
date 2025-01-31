@@ -65,7 +65,7 @@ Note: All steps must be executed from the repository root directory.
    ```bash
    python3 -m venv venv
    source venv/bin/activate # On Windows: venv\Scripts\activate
-   pip install -r requirements.txt
+   pip install -r src/app/requirements.txt
    ```
 
    If the installation is stuck at sentence_transformers, restart and install the following manually (using a TMPDIR with sufficient space):

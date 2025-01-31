@@ -103,7 +103,6 @@ if [ ! -d $buildDir ]; then
     echo "Warning: Build Directory does not exist: $buildDir" >&2
     mkdir -p $buildDir
     echo "Created Build Directory: $buildDir" >&2
-    exit 1
 fi
 
 
